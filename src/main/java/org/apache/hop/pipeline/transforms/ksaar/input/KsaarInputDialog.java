@@ -19,6 +19,7 @@ package org.apache.hop.pipeline.transforms.ksaar.input;
 
 
 import java.util.*;
+import java.util.List;
 import java.util.Map.Entry;
 import org.apache.hop.core.Const;
 import org.apache.hop.core.exception.HopException;
@@ -30,6 +31,8 @@ import org.apache.hop.pipeline.transform.ITransformDialog;
 import org.apache.hop.pipeline.transforms.ksaar.Ksaar;
 import org.apache.hop.ui.core.FormDataBuilder;
 import org.apache.hop.ui.core.dialog.BaseDialog;
+import org.apache.hop.ui.core.widget.ColumnInfo;
+import org.apache.hop.ui.core.widget.TableView;
 import org.apache.hop.ui.core.widget.TextVar;
 import org.apache.hop.ui.pipeline.transform.BaseTransformDialog;
 import org.eclipse.swt.SWT;
@@ -57,6 +60,11 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
   private CCombo wWorkflowField;
 
   private TextVar wTokenField;
+
+  private TableView wFields;
+
+  private ColumnInfo wKsaarField;
+  private ColumnInfo wStreamField;
 
   private MessageBox dialog;
 
@@ -178,6 +186,48 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
             .result();
     wWorkflowField.setLayoutData(fdWorkflow);
 
+    // ------------------------ \\
+
+    FormLayout fieldsLayout = new FormLayout();
+    fieldsLayout.marginWidth = Const.FORM_MARGIN;
+    fieldsLayout.marginHeight = Const.FORM_MARGIN;
+
+    ColumnInfo[] colinf =
+        new ColumnInfo[] {
+          wKsaarField =
+              new ColumnInfo(
+                  BaseMessages.getString(PKG, "KsaarInputDialog.KsaarColumn.Column"),
+                  ColumnInfo.COLUMN_TYPE_CCOMBO,
+                  new String[] {""},
+                  false),
+          wStreamField =
+              new ColumnInfo(
+                  BaseMessages.getString(PKG, "KsaarInputDialog.StreamColumn.Column"),
+                  ColumnInfo.COLUMN_TYPE_TEXT,
+                  new String[] {""},
+                  false)
+        };
+
+    wFields =
+        new TableView(
+            variables,
+            contentComposite,
+            SWT.BORDER | SWT.FULL_SELECTION | SWT.MULTI,
+            colinf,
+            meta.getKsaarFields() == null ? 1 : meta.getKsaarFields().size(),
+            lsMod,
+            props);
+    FormData fdFields =
+        new FormDataBuilder()
+            .left(middle, 0)
+            .top(wWorkflowField, ELEMENT_SPACING)
+            .right(100, 0)
+            .fullWidth()
+            .height(200)
+            .result();
+    wFields.setLayoutData(fdFields);
+    props.setLook(wFields);
+
     // --------------------- BOTTOM --------------------- \\
 
     // Cancel, action and OK buttons for the bottom of the window.
@@ -235,6 +285,11 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
             updateApplications();
             updateWorkflows();
           }
+        });
+
+    wWorkflowField.addModifyListener(
+        e -> {
+          updateFields(wWorkflowField.getText());
         });
 
     BaseDialog.defaultShellHandling(shell, c -> ok(), c -> cancel());
@@ -305,6 +360,48 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
     }
   }
 
+  private void updateFields(String workflowName) {
+    String[] fieldsValue = null;
+
+    Map<String, String> fields = meta.getFields();
+
+    String workflowField = meta.getWorkflowField();
+    if (workflowField != null && wWorkflowField.getText().equals(workflowField)) {
+      if (fields != null) {
+        fieldsValue = new String[fields.size()];
+        int i = 0;
+        for (Entry<String, String> field : fields.entrySet()) {
+          fieldsValue[i] = field.getKey();
+          i++;
+        }
+
+        wKsaarField.setComboValues(fieldsValue);
+
+        return;
+      }
+    }
+
+    String workflowId = meta.workflows.get(workflowName);
+
+    try {
+      JSONArray ksaarFields = Ksaar.getFields(token, workflowId);
+
+      fieldsValue = new String[ksaarFields.length()];
+      fields = new HashMap<String, String>();
+
+      for (int i = 0; i < ksaarFields.length(); i++) {
+        JSONObject field = ksaarFields.getJSONObject(i);
+        fieldsValue[i] = field.getString("name");
+        fields.put(field.getString("name"), field.getString("id"));
+      }
+
+      wKsaarField.setComboValues(fieldsValue);
+      meta.setFields(fields);
+    } catch (HopException e) {
+      e.printStackTrace();
+    }
+  }
+
   private void getData() {
     String tokenField = meta.getTokenField();
     if (tokenField != null) wTokenField.setText(tokenField);
@@ -327,6 +424,32 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
         }
       }
     }
+
+    List<String> ksaarFields = meta.getKsaarFields();
+    if (ksaarFields != null) {
+      Table fieldsTable = wFields.table;
+
+      for (int i = 0; i < ksaarFields.size(); i++) {
+        TableItem item = fieldsTable.getItem(i);
+        item.setText(1, ksaarFields.get(i));
+      }
+
+      fieldsTable.redraw();
+    }
+
+    List<String> streamFields = meta.getStreamFields();
+    if (streamFields != null) {
+      Table fieldsTable = wFields.table;
+
+      for (int i = 0; i < streamFields.size(); i++) {
+        TableItem item = fieldsTable.getItem(i);
+        item.setText(2, streamFields.get(i));
+      }
+
+      fieldsTable.redraw();
+    }
+
+    updateFields(workflowField);
   }
 
   private void setMeta(KsaarInputMeta meta) {
@@ -336,6 +459,19 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
     meta.setToken(token);
     meta.setApplicationId(applicationId);
     meta.setWorkflowId(meta.workflows.get(wWorkflowField.getText()));
+
+    Table fieldsTable = wFields.table;
+    List<String> ksaarFields = new ArrayList<String>();
+    List<String> streamFields = new ArrayList<String>();
+
+    for (int i = 0; i < fieldsTable.getItemCount(); i++) {
+      TableItem item = fieldsTable.getItem(i);
+      ksaarFields.add(item.getText(1));
+      streamFields.add(item.getText(2));
+    }
+
+    meta.setKsaarFields(ksaarFields);
+    meta.setStreamFields(streamFields);
   }
 
   private void cancel() {

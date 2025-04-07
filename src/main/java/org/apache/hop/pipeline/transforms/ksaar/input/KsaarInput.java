@@ -1,6 +1,9 @@
 package org.apache.hop.pipeline.transforms.ksaar.input;
 
 
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.hop.core.exception.HopException;
 import org.apache.hop.core.row.RowDataUtil;
 import org.apache.hop.core.row.RowMeta;
@@ -32,14 +35,21 @@ public class KsaarInput extends BaseTransform<KsaarInputMeta, KsaarInputData> {
     boolean firstRow = true;
 
     String token = meta.getToken();
+
+    List<String> searchKsaarFieldsNames = meta.getKsaarFields();
+    List<String> searchStreamFieldsNames = meta.getStreamFields();
+
+    Map<String, Integer> mappingFields = new HashMap<String, Integer>();
+
     JSONArray records = Ksaar.getRecords(token, meta.getWorkflowId());
 
     for (int i = 0; i < records.length(); i++) {
       JSONObject record = records.getJSONObject(i);
 
       if (firstRow) {
-        for (String key : record.keySet()) {
-          data.outputRowMeta.addValueMeta(new ValueMetaString(key));
+        for (int j = 0; j < searchKsaarFieldsNames.size(); j++) {
+          data.outputRowMeta.addValueMeta(new ValueMetaString(searchStreamFieldsNames.get(j)));
+          mappingFields.put(searchKsaarFieldsNames.get(j), j);
         }
 
         firstRow = false;
@@ -47,10 +57,10 @@ public class KsaarInput extends BaseTransform<KsaarInputMeta, KsaarInputData> {
 
       Object[] outputRow = RowDataUtil.allocateRowData(data.outputRowMeta.size());
 
-      int index = 0;
       for (String key : record.keySet()) {
-        outputRow[index] = record.get(key);
-        index++;
+        if (mappingFields.containsKey(key)) {
+          outputRow[mappingFields.get(key)] = record.get(key);
+        }
       }
 
       putRow(data.outputRowMeta, outputRow);

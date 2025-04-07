@@ -18,6 +18,8 @@
 package org.apache.hop.pipeline.transforms.ksaar.input;
 
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.apache.hop.core.annotations.Transform;
 import org.apache.hop.core.exception.HopXmlException;
@@ -29,6 +31,7 @@ import org.apache.hop.metadata.api.IHopMetadataProvider;
 import org.apache.hop.pipeline.transform.BaseTransformMeta;
 import org.apache.hop.pipeline.transform.TransformMeta;
 import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 @Transform(
     id = "KsaarInput",
@@ -41,6 +44,7 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
   private static final Class<?> PKG = KsaarInputMeta.class; // For Translator
 
   public Map<String, String> workflows;
+  public Map<String, String> fields;
 
   private String tokenField;
   private String workflowField;
@@ -48,6 +52,9 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
   private String token;
   private String applicationId;
   private String workflowId;
+
+  private List<String> ksaarFields;
+  private List<String> streamFields;
 
   public KsaarInputMeta() {
     super(); // allocate BaseTransformMeta
@@ -101,6 +108,30 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
     this.workflowId = workflowId;
   }
 
+  public List<String> getKsaarFields() {
+    return ksaarFields;
+  }
+
+  public void setKsaarFields(List<String> ksaarFields) {
+    this.ksaarFields = ksaarFields;
+  }
+
+  public List<String> getStreamFields() {
+    return streamFields;
+  }
+
+  public void setStreamFields(List<String> streamFields) {
+    this.streamFields = streamFields;
+  }
+
+  public Map<String, String> getFields() {
+    return fields;
+  }
+
+  public void setFields(Map<String, String> fields) {
+    this.fields = fields;
+  }
+
   @Override
   public void loadXml(Node transformNode, IHopMetadataProvider metadataProvider)
       throws HopXmlException {
@@ -117,6 +148,30 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
     token = XmlHandler.getTagValue(transformNode, "token");
     applicationId = XmlHandler.getTagValue(transformNode, "applicationId");
     workflowId = XmlHandler.getTagValue(transformNode, "workflowId");
+
+    // ----------------------------------------------\\
+
+    ksaarFields = new ArrayList<String>();
+    NodeList fieldNodes = transformNode.getChildNodes();
+    for (int i = 0; i < fieldNodes.getLength(); i++) {
+      Node fieldNode = fieldNodes.item(i);
+
+      if (fieldNode.getNodeType() == Node.ELEMENT_NODE
+          && fieldNode.getNodeName().equals("ksaarField")) {
+        ksaarFields.add(fieldNode.getTextContent());
+      }
+    }
+
+    streamFields = new ArrayList<String>();
+    NodeList streamNodes = transformNode.getChildNodes();
+    for (int i = 0; i < streamNodes.getLength(); i++) {
+      Node streamNode = streamNodes.item(i);
+
+      if (streamNode.getNodeType() == Node.ELEMENT_NODE
+          && streamNode.getNodeName().equals("streamField")) {
+        streamFields.add(streamNode.getTextContent());
+      }
+    }
   }
 
   @Override
@@ -143,6 +198,21 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
     retval.append("    " + XmlHandler.addTagValue("token", token));
     retval.append("    " + XmlHandler.addTagValue("applicationId", applicationId));
     retval.append("    " + XmlHandler.addTagValue("workflowId", workflowId));
+
+    // ----------------------------------------------\\
+
+    if (ksaarFields != null && !ksaarFields.isEmpty()) {
+      for (String field : ksaarFields) {
+        retval.append("    " + XmlHandler.addTagValue("ksaarField", field));
+      }
+    }
+
+    if (streamFields != null && !streamFields.isEmpty()) {
+      for (String field : streamFields) {
+        retval.append("    " + XmlHandler.addTagValue("streamField", field));
+      }
+    }
+
     return retval.toString();
   }
 
