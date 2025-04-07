@@ -19,24 +19,30 @@ package org.apache.hop.pipeline.transforms.ksaar.input;
 
 
 import java.util.*;
-import java.util.List;
+import java.util.Map.Entry;
 import org.apache.hop.core.Const;
+import org.apache.hop.core.exception.HopException;
 import org.apache.hop.core.variables.IVariables;
 import org.apache.hop.i18n.BaseMessages;
 import org.apache.hop.pipeline.PipelineMeta;
 import org.apache.hop.pipeline.transform.BaseTransformMeta;
 import org.apache.hop.pipeline.transform.ITransformDialog;
-import org.apache.hop.pipeline.transform.stream.IStream;
+import org.apache.hop.pipeline.transforms.ksaar.Ksaar;
 import org.apache.hop.ui.core.FormDataBuilder;
 import org.apache.hop.ui.core.dialog.BaseDialog;
 import org.apache.hop.ui.core.widget.TextVar;
 import org.apache.hop.ui.pipeline.transform.BaseTransformDialog;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.CCombo;
 import org.eclipse.swt.custom.ScrolledComposite;
+import org.eclipse.swt.events.FocusEvent;
+import org.eclipse.swt.events.FocusListener;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.layout.FormData;
 import org.eclipse.swt.layout.FormLayout;
 import org.eclipse.swt.widgets.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class KsaarInputDialog extends BaseTransformDialog implements ITransformDialog {
   private static final Class<?> PKG = KsaarInputMeta.class; // For Translator
@@ -48,10 +54,14 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
 
   private Text wTransformNameField;
 
-  private TextVar wApplicationField;
-  private TextVar wWorkflowField;
+  private CCombo wWorkflowField;
+
   private TextVar wTokenField;
 
+  private MessageBox dialog;
+
+  private String token;
+  private String applicationId;
   private boolean changed;
 
   public KsaarInputDialog(
@@ -144,34 +154,6 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
 
     // ------------------------ \\
 
-    // Create a label for the "Application" field
-    Label wApplicationLabel = new Label(contentComposite, SWT.RIGHT);
-    wApplicationLabel.setText(
-        BaseMessages.getString(PKG, "KsaarInputDialog.ApplicationName.Label"));
-    props.setLook(wApplicationLabel);
-    FormData fdApplicationLabel =
-        new FormDataBuilder()
-            .left()
-            .top(wTokenField, ELEMENT_SPACING)
-            .right(middle, -ELEMENT_SPACING)
-            .result();
-    wApplicationLabel.setLayoutData(fdApplicationLabel);
-
-    // Create the TextVar widget for "Workflow name"
-    wApplicationField =
-        new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wApplicationField.setText(""); // Default text can be set here, or leave it blank
-    props.setLook(wApplicationField);
-    FormData fdApplication =
-        new FormDataBuilder()
-            .left(middle, 0)
-            .top(wTokenField, ELEMENT_SPACING)
-            .right(100, 0)
-            .result();
-    wApplicationField.setLayoutData(fdApplication);
-
-    // ------------------------ \\
-
     // Create a label for the "Workflow" field
     Label wWorkflowLabel = new Label(contentComposite, SWT.RIGHT);
     wWorkflowLabel.setText(BaseMessages.getString(PKG, "KsaarInputDialog.WorkflowName.Label"));
@@ -179,19 +161,19 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
     FormData fdWorkflowLabel =
         new FormDataBuilder()
             .left()
-            .top(wApplicationField, ELEMENT_SPACING)
+            .top(wTokenField, ELEMENT_SPACING)
             .right(middle, -ELEMENT_SPACING)
             .result();
     wWorkflowLabel.setLayoutData(fdWorkflowLabel);
 
     // Create the TextVar widget for "Workflow name"
-    wWorkflowField = new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
+    wWorkflowField = new CCombo(contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
     wWorkflowField.setText(""); // Default text can be set here, or leave it blank
     props.setLook(wWorkflowField);
     FormData fdWorkflow =
         new FormDataBuilder()
             .left(middle, 0)
-            .top(wApplicationField, ELEMENT_SPACING)
+            .top(wTokenField, ELEMENT_SPACING)
             .right(100, 0)
             .result();
     wWorkflowField.setLayoutData(fdWorkflow);
@@ -240,28 +222,120 @@ public class KsaarInputDialog extends BaseTransformDialog implements ITransformD
 
     getData();
 
+    wTokenField.addFocusListener(
+        new FocusListener() {
+          @Override
+          public void focusGained(FocusEvent e) {}
+
+          @Override
+          public void focusLost(FocusEvent e) {
+            if (wTokenField.getText().length() == 0) return;
+
+            token = variables.resolve(wTokenField.getText());
+            updateApplications();
+            updateWorkflows();
+          }
+        });
+
     BaseDialog.defaultShellHandling(shell, c -> ok(), c -> cancel());
 
     return transformName;
   }
 
+  private void updateApplications() {
+    try {
+      JSONArray applications = Ksaar.getApplication(token);
+
+      if (applications == null) {
+        dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+        dialog.setMessage(BaseMessages.getString(PKG, "Ksaar.Error.ApplicationNotFound"));
+        dialog.open();
+
+        return;
+      }
+
+      JSONObject application = applications.getJSONObject(0);
+
+      applicationId = application.getString("id");
+    } catch (HopException e) {
+      dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+      dialog.setMessage(BaseMessages.getString(PKG, e.getMessage()));
+      dialog.open();
+    }
+  }
+
+  private void updateWorkflows() {
+    wWorkflowField.removeAll();
+
+    Map<String, String> workflows = meta.getWorkflows();
+
+    if (workflows != null) {
+      System.out.println("workflow meta");
+      for (Entry<String, String> workflow : workflows.entrySet()) {
+        wWorkflowField.add(workflow.getKey());
+      }
+
+      return;
+    }
+
+    try {
+      JSONArray ksaarWorkflows = Ksaar.getWorkflows(token, applicationId);
+      System.out.println("workflow request");
+      if (ksaarWorkflows == null) {
+        dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+        dialog.setMessage(BaseMessages.getString(PKG, "Ksaar.Error.WorkflowsNotFound"));
+        dialog.open();
+
+        return;
+      }
+
+      workflows = new HashMap<String, String>();
+
+      for (int i = 0; i < ksaarWorkflows.length(); i++) {
+        JSONObject workflow = ksaarWorkflows.getJSONObject(i);
+        wWorkflowField.add(workflow.getString("name"));
+        workflows.put(workflow.getString("name"), workflow.getString("id"));
+      }
+
+      meta.setWorkflows(workflows);
+    } catch (HopException e) {
+      dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+      dialog.setMessage(BaseMessages.getString(PKG, e.getMessage()));
+      dialog.open();
+    }
+  }
+
   private void getData() {
     String tokenField = meta.getTokenField();
     if (tokenField != null) wTokenField.setText(tokenField);
+    else return;
+    this.token = meta.getToken();
 
-    String applicationField = meta.getApplicationField();
-    if (applicationField != null) wApplicationField.setText(applicationField);
+    String applicationId = meta.getApplicationId();
+    if (applicationId == null) return;
+    this.applicationId = applicationId;
+
+    updateWorkflows();
 
     String workflowField = meta.getWorkflowField();
-    if (workflowField != null) wWorkflowField.setText(workflowField);
+    if (workflowField != null) {
+      String[] workflowsItems = wWorkflowField.getItems();
+      for (int i = 0; i < workflowsItems.length; i++) {
+        if (workflowsItems[i].equals(workflowField)) {
+          wWorkflowField.select(i);
+          break;
+        }
+      }
+    }
   }
 
   private void setMeta(KsaarInputMeta meta) {
-    List<IStream> targetStreams = meta.getTransformIOMeta().getTargetStreams();
-
     meta.setTokenField(wTokenField.getText());
-    meta.setApplicationField(wApplicationField.getText());
     meta.setWorkflowField(wWorkflowField.getText());
+
+    meta.setToken(token);
+    meta.setApplicationId(applicationId);
+    meta.setWorkflowId(meta.workflows.get(wWorkflowField.getText()));
   }
 
   private void cancel() {

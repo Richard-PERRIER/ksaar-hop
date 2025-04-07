@@ -18,7 +18,6 @@
 package org.apache.hop.pipeline.transforms.ksaar.output;
 
 
-import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.pipeline.transform.BaseTransformData;
 import org.apache.hop.pipeline.transform.ITransformData;
 
@@ -27,12 +26,6 @@ import org.apache.hop.pipeline.transform.ITransformData;
  * @since 7-sep-2006
  */
 public class KsaarOutputData extends BaseTransformData implements ITransformData {
-  public int splitnr;
-
-  public IRowMeta previousMeta;
-  public IRowMeta outputMeta;
-
-  public int templateColumns; // initial number of columns in the template
 
   public KsaarOutputData() {
     super();

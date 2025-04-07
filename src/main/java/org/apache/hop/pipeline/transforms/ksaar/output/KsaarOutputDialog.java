@@ -20,13 +20,17 @@ package org.apache.hop.pipeline.transforms.ksaar.output;
 
 import java.util.*;
 import java.util.List;
+import java.util.Map.Entry;
 import org.apache.hop.core.Const;
+import org.apache.hop.core.exception.HopException;
+import org.apache.hop.core.exception.HopTransformException;
+import org.apache.hop.core.row.IRowMeta;
 import org.apache.hop.core.variables.IVariables;
 import org.apache.hop.i18n.BaseMessages;
 import org.apache.hop.pipeline.PipelineMeta;
 import org.apache.hop.pipeline.transform.BaseTransformMeta;
 import org.apache.hop.pipeline.transform.ITransformDialog;
-import org.apache.hop.pipeline.transform.stream.IStream;
+import org.apache.hop.pipeline.transforms.ksaar.Ksaar;
 import org.apache.hop.ui.core.FormDataBuilder;
 import org.apache.hop.ui.core.dialog.BaseDialog;
 import org.apache.hop.ui.core.widget.ColumnInfo;
@@ -36,10 +40,14 @@ import org.apache.hop.ui.pipeline.transform.BaseTransformDialog;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.CCombo;
 import org.eclipse.swt.custom.ScrolledComposite;
+import org.eclipse.swt.events.FocusEvent;
+import org.eclipse.swt.events.FocusListener;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.layout.FormData;
 import org.eclipse.swt.layout.FormLayout;
 import org.eclipse.swt.widgets.*;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 public class KsaarOutputDialog extends BaseTransformDialog implements ITransformDialog {
   private static final Class<?> PKG = KsaarOutputMeta.class; // For Translator
@@ -52,15 +60,22 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
   private Text wTransformNameField;
 
   private CCombo wBulkTypeField;
+  private CCombo wEmailField;
+  private CCombo wWorkflowField;
 
-  private TextVar wEmailField;
-  private TextVar wApplicationField;
-  private TextVar wWorkflowField;
   private TextVar wTokenField;
-  private TextVar wIdField;
+
+  private CCombo wIdField;
 
   private TableView wFields;
 
+  private ColumnInfo wKsaarField;
+  private ColumnInfo wStreamField;
+
+  private MessageBox dialog;
+
+  private String token;
+  private String applicationId;
   private boolean changed;
 
   public KsaarOutputDialog(
@@ -71,7 +86,6 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
   @Override
   public String open() {
-    // Set up window
     Shell parent = getParent();
 
     shell = new Shell(parent, SWT.DIALOG_TRIM | SWT.RESIZE | SWT.MIN | SWT.MAX);
@@ -79,18 +93,17 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
     setShellImage(shell, meta);
     int middle = props.getMiddlePct();
 
-    // Listeners
     ModifyListener lsMod = e -> meta.setChanged();
     changed = meta.hasChanged();
 
-    // 15 pixel margins
+    dialog = new MessageBox(shell);
+
     FormLayout formLayout = new FormLayout();
     formLayout.marginLeft = MARGIN_SIZE;
     formLayout.marginHeight = MARGIN_SIZE;
     shell.setLayout(formLayout);
     shell.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.Shell.Title"));
 
-    // Build a scrolling composite and a composite for holding all content
     ScrolledComposite scrolledComposite = new ScrolledComposite(shell, SWT.V_SCROLL);
     Composite contentComposite = new Composite(scrolledComposite, SWT.NONE);
     FormLayout contentLayout = new FormLayout();
@@ -102,8 +115,6 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     // --------------------- TOP --------------------- \\
 
-    // transform name label and text field
-    // Transform Name.
     Label wTransformNameLabel = new Label(contentComposite, SWT.RIGHT);
     wTransformNameLabel.setText(
         BaseMessages.getString(PKG, "KsaarOutputDialog.TransformName.Label"));
@@ -119,7 +130,6 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
     FormData fdTransformName = new FormDataBuilder().left(middle, 0).top().right(100, 0).result();
     wTransformNameField.setLayoutData(fdTransformName);
 
-    // Spacer between entry info and content
     Label topSpacer = new Label(contentComposite, SWT.HORIZONTAL | SWT.SEPARATOR);
     FormData fdSpacer =
         new FormDataBuilder().fullWidth().top(wTransformNameField, MARGIN_SIZE).result();
@@ -127,17 +137,6 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     // --------------------- CONTENT --------------------- \\
 
-    //    CTabFolder wTabDetail = new CTabFolder(shell, SWT.BORDER);
-    //    props.setLook(wTabDetail, Props.WIDGET_STYLE_TAB);
-    //
-    //    CTabItem wDetailTab = new CTabItem(wTabDetail, SWT.NONE);
-    //    wDetailTab.setText( BaseMessages.getString( PKG, "KsaarOutputDialog.DetailTab.TabTitle" )
-    // );
-    //
-    //    Composite wDetailComp = new Composite(wTabDetail, SWT.NONE );
-    //    props.setLook( wDetailComp );
-
-    // Create a label for the "Token" field
     Label wTokenLabel = new Label(contentComposite, SWT.RIGHT);
     wTokenLabel.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.TokenName.Label"));
     props.setLook(wTokenLabel);
@@ -149,9 +148,8 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             .result();
     wTokenLabel.setLayoutData(fdTokenLabel);
 
-    // Create the TextVar widget for "Workflow name"
     wTokenField = new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wTokenField.setText(""); // Default text can be set here, or leave it blank
+    wTokenField.setText("");
     props.setLook(wTokenField);
     FormData fdToken =
         new FormDataBuilder()
@@ -163,61 +161,30 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     // ------------------------ \\
 
-    // Create a label for the "Application" field
-    Label wApplicationLabel = new Label(contentComposite, SWT.RIGHT);
-    wApplicationLabel.setText(
-        BaseMessages.getString(PKG, "KsaarOutputDialog.ApplicationName.Label"));
-    props.setLook(wApplicationLabel);
-    FormData fdApplicationLabel =
-        new FormDataBuilder()
-            .left()
-            .top(wTokenField, ELEMENT_SPACING)
-            .right(middle, -ELEMENT_SPACING)
-            .result();
-    wApplicationLabel.setLayoutData(fdApplicationLabel);
-
-    // Create the TextVar widget for "Workflow name"
-    wApplicationField =
-        new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wApplicationField.setText(""); // Default text can be set here, or leave it blank
-    props.setLook(wApplicationField);
-    FormData fdApplication =
-        new FormDataBuilder()
-            .left(middle, 0)
-            .top(wTokenField, ELEMENT_SPACING)
-            .right(100, 0)
-            .result();
-    wApplicationField.setLayoutData(fdApplication);
-
-    // ------------------------ \\
-
-    // Create a label for the "Workflow" field
     Label wWorkflowLabel = new Label(contentComposite, SWT.RIGHT);
     wWorkflowLabel.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.WorkflowName.Label"));
     props.setLook(wWorkflowLabel);
     FormData fdWorkflowLabel =
         new FormDataBuilder()
             .left()
-            .top(wApplicationField, ELEMENT_SPACING)
+            .top(wTokenField, ELEMENT_SPACING)
             .right(middle, -ELEMENT_SPACING)
             .result();
     wWorkflowLabel.setLayoutData(fdWorkflowLabel);
 
-    // Create the TextVar widget for "Workflow name"
-    wWorkflowField = new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wWorkflowField.setText(""); // Default text can be set here, or leave it blank
+    wWorkflowField = new CCombo(contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
+    wWorkflowField.setText("");
     props.setLook(wWorkflowField);
     FormData fdWorkflow =
         new FormDataBuilder()
             .left(middle, 0)
-            .top(wApplicationField, ELEMENT_SPACING)
+            .top(wTokenField, ELEMENT_SPACING)
             .right(100, 0)
             .result();
     wWorkflowField.setLayoutData(fdWorkflow);
 
     // ------------------------ \\
 
-    // Create a label for the "BulkType" field
     Label wBulkTypeLabel = new Label(contentComposite, SWT.RIGHT);
     wBulkTypeLabel.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.BulkType.Label"));
     props.setLook(wBulkTypeLabel);
@@ -229,9 +196,8 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             .result();
     wBulkTypeLabel.setLayoutData(fdBulkTypeLabel);
 
-    // Create the TextVar widget for "Workflow name"
     wBulkTypeField = new CCombo(contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wBulkTypeField.setText(""); // Default text can be set here, or leave it blank
+    wBulkTypeField.setText("");
     props.setLook(wBulkTypeField);
     FormData fdBulkType =
         new FormDataBuilder()
@@ -240,10 +206,10 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             .right(100, 0)
             .result();
     wBulkTypeField.setLayoutData(fdBulkType);
+    wBulkTypeField.addModifyListener(e -> updateBulk(wBulkTypeField.getText()));
 
     // ------------------------ \\
 
-    // Create a label for the "Email" field
     Label wEmailLabel = new Label(contentComposite, SWT.RIGHT);
     wEmailLabel.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.Email.Label"));
     props.setLook(wEmailLabel);
@@ -255,9 +221,8 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             .result();
     wEmailLabel.setLayoutData(fdEmailLabel);
 
-    // Create the TextVar widget for "Workflow name"
-    wEmailField = new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wEmailField.setText(""); // Default text can be set here, or leave it blank
+    wEmailField = new CCombo(contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
+    wEmailField.setText("");
     props.setLook(wEmailField);
     FormData fdEmail =
         new FormDataBuilder()
@@ -269,7 +234,6 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     // ------------------------ \\
 
-    // Create a label for the "Email" field
     Label wIdLabel = new Label(contentComposite, SWT.RIGHT);
     wIdLabel.setText(BaseMessages.getString(PKG, "KsaarOutputDialog.Id.Label"));
     props.setLook(wIdLabel);
@@ -281,9 +245,8 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             .result();
     wIdLabel.setLayoutData(fdIdLabel);
 
-    // Create the TextVar widget for "Id name"
-    wIdField = new TextVar(variables, contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
-    wIdField.setText(""); // Default text can be set here, or leave it blank
+    wIdField = new CCombo(contentComposite, SWT.SINGLE | SWT.LEFT | SWT.BORDER);
+    wIdField.setText("");
     props.setLook(wIdField);
     FormData fdId =
         new FormDataBuilder()
@@ -295,33 +258,24 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     // ------------------------ \\
 
-    //    CTabFolder wTabFields = new CTabFolder(shell, SWT.BORDER);
-    //    props.setLook(wTabFields, Props.WIDGET_STYLE_TAB);
-    //
-    //    CTabItem wFieldsTab = new CTabItem(wTabFields, SWT.NONE);
-    //    wFieldsTab.setText( BaseMessages.getString( PKG, "KsaarOutputDialog.FieldsTab.TabTitle" )
-    // );
-    //
-    //    Composite wFieldsComp = new Composite(wTabFields, SWT.NONE );
-    //    props.setLook( wFieldsComp );
-    //
     FormLayout fieldsLayout = new FormLayout();
     fieldsLayout.marginWidth = Const.FORM_MARGIN;
     fieldsLayout.marginHeight = Const.FORM_MARGIN;
 
-    int FieldsRows = 1;
-
-    if (meta.getFields() != null) {
-      FieldsRows = meta.getFields().size();
-    }
-
     ColumnInfo[] colinf =
         new ColumnInfo[] {
-          new ColumnInfo(
-              BaseMessages.getString(PKG, "KsaarOutputDialog.NameColumn.Column"),
-              ColumnInfo.COLUMN_TYPE_CCOMBO,
-              new String[] {""},
-              false),
+          wKsaarField =
+              new ColumnInfo(
+                  BaseMessages.getString(PKG, "KsaarOutputDialog.KsaarColumn.Column"),
+                  ColumnInfo.COLUMN_TYPE_CCOMBO,
+                  new String[] {""},
+                  false),
+          wStreamField =
+              new ColumnInfo(
+                  BaseMessages.getString(PKG, "KsaarOutputDialog.StreamColumn.Column"),
+                  ColumnInfo.COLUMN_TYPE_CCOMBO,
+                  new String[] {""},
+                  false)
         };
 
     wFields =
@@ -330,11 +284,17 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
             contentComposite,
             SWT.BORDER | SWT.FULL_SELECTION | SWT.MULTI,
             colinf,
-            FieldsRows,
+            meta.getKsaarFields() == null ? 1 : meta.getKsaarFields().size(),
             lsMod,
             props);
     FormData fdFields =
-        new FormDataBuilder().left(middle, 0).top(wIdField, ELEMENT_SPACING).right(100, 0).result();
+        new FormDataBuilder()
+            .left(middle, 0)
+            .top(wIdField, ELEMENT_SPACING)
+            .right(100, 0)
+            .fullWidth()
+            .height(200)
+            .result();
     wFields.setLayoutData(fdFields);
     props.setLook(wFields);
 
@@ -382,61 +342,295 @@ public class KsaarOutputDialog extends BaseTransformDialog implements ITransform
 
     getData();
 
+    wTokenField.addFocusListener(
+        new FocusListener() {
+          @Override
+          public void focusGained(FocusEvent e) {}
+
+          @Override
+          public void focusLost(FocusEvent e) {
+            if (wTokenField.getText().length() == 0) return;
+
+            token = variables.resolve(wTokenField.getText());
+            updateApplications();
+            updateWorkflows();
+          }
+        });
+
+    wWorkflowField.addModifyListener(
+        e -> {
+          updateFields(wWorkflowField.getText());
+        });
+
     BaseDialog.defaultShellHandling(shell, c -> ok(), c -> cancel());
 
     return transformName;
   }
 
+  private void updateBulk(String bulkType) {
+    switch (bulkType) {
+      case "CREATE":
+        wEmailField.setEnabled(true);
+        wIdField.setEnabled(false);
+        wFields.setVisible(true);
+        break;
+
+      case "UPDATE":
+        wEmailField.setEnabled(false);
+        wIdField.setEnabled(true);
+        wFields.setVisible(true);
+        break;
+      case "DELETE":
+        wEmailField.setEnabled(false);
+        wIdField.setEnabled(true);
+        wFields.setVisible(false);
+        break;
+    }
+  }
+
+  private void updateApplications() {
+    try {
+      JSONArray applications = Ksaar.getApplication(token);
+
+      if (applications == null) {
+        dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+        dialog.setMessage(BaseMessages.getString(PKG, "Ksaar.Error.ApplicationNotFound"));
+        dialog.open();
+
+        return;
+      }
+
+      JSONObject application = applications.getJSONObject(0);
+
+      applicationId = application.getString("id");
+    } catch (HopException e) {
+      dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+      dialog.setMessage(BaseMessages.getString(PKG, e.getMessage()));
+      dialog.open();
+    }
+  }
+
+  private void updateWorkflows() {
+    wWorkflowField.removeAll();
+
+    Map<String, String> workflows = meta.getWorkflows();
+
+    if (workflows != null) {
+      System.out.println("workflow meta");
+      for (Entry<String, String> workflow : workflows.entrySet()) {
+        wWorkflowField.add(workflow.getKey());
+      }
+
+      return;
+    }
+
+    try {
+      JSONArray ksaarWorkflows = Ksaar.getWorkflows(token, applicationId);
+      System.out.println("workflow request");
+      if (ksaarWorkflows == null) {
+        dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+        dialog.setMessage(BaseMessages.getString(PKG, "Ksaar.Error.WorkflowsNotFound"));
+        dialog.open();
+
+        return;
+      }
+
+      workflows = new HashMap<String, String>();
+
+      for (int i = 0; i < ksaarWorkflows.length(); i++) {
+        JSONObject workflow = ksaarWorkflows.getJSONObject(i);
+        wWorkflowField.add(workflow.getString("name"));
+        workflows.put(workflow.getString("name"), workflow.getString("id"));
+      }
+
+      meta.setWorkflows(workflows);
+    } catch (HopException e) {
+      dialog.setText(BaseMessages.getString(PKG, "Ksaar.Message.Title"));
+      dialog.setMessage(BaseMessages.getString(PKG, e.getMessage()));
+      dialog.open();
+    }
+  }
+
+  private void updateUsers() {
+    wEmailField.removeAll();
+
+    List<String> users = meta.getUsers();
+
+    if (users != null) {
+      for (String user : users) {
+        wEmailField.add(user);
+      }
+
+      return;
+    }
+
+    try {
+      JSONArray ksaarUsers = Ksaar.getUsers(token, applicationId);
+
+      users = new ArrayList<String>();
+
+      for (int i = 0; i < ksaarUsers.length(); i++) {
+        JSONObject user = ksaarUsers.getJSONObject(i);
+        wEmailField.add(user.getString("email"));
+        users.add(user.getString("email"));
+      }
+
+      meta.setUsers(users);
+    } catch (HopException e) {
+      e.printStackTrace();
+    }
+  }
+
+  private void updateFields(String workflowName) {
+    String[] fieldsValue = null;
+
+    Map<String, String> fields = meta.getFields();
+
+    String workflowField = meta.getWorkflowField();
+    if (workflowField != null && wWorkflowField.getText().equals(workflowField)) {
+      if (fields != null) {
+        fieldsValue = new String[fields.size()];
+        int i = 0;
+        for (Entry<String, String> field : fields.entrySet()) {
+          fieldsValue[i] = field.getKey();
+          i++;
+        }
+
+        wKsaarField.setComboValues(fieldsValue);
+
+        return;
+      }
+    }
+
+    String workflowId = meta.workflows.get(workflowName);
+
+    try {
+      JSONArray ksaarFields = Ksaar.getFields(token, workflowId);
+
+      fieldsValue = new String[ksaarFields.length()];
+      fields = new HashMap<String, String>();
+
+      for (int i = 0; i < ksaarFields.length(); i++) {
+        JSONObject field = ksaarFields.getJSONObject(i);
+        fieldsValue[i] = field.getString("name");
+        fields.put(field.getString("name"), field.getString("id"));
+      }
+
+      wKsaarField.setComboValues(fieldsValue);
+      meta.setFields(fields);
+    } catch (HopException e) {
+      e.printStackTrace();
+    }
+  }
+
   private void getData() {
-    wBulkTypeField.add("CREATE");
-    wBulkTypeField.add("UPDATE");
-    wBulkTypeField.add("DELETE");
+    wBulkTypeField.setItems(meta.bulkTypeString);
+    wBulkTypeField.select(0);
+
+    String bulkType = meta.getBulkTypeField();
+    if (bulkType != null)
+      wBulkTypeField.select(Arrays.asList(meta.bulkTypeString).indexOf(bulkType));
 
     String tokenField = meta.getTokenField();
     if (tokenField != null) wTokenField.setText(tokenField);
+    else return;
+    this.token = meta.getToken();
 
-    String applicationField = meta.getApplicationField();
-    if (applicationField != null) wApplicationField.setText(applicationField);
+    String applicationId = meta.getApplicationId();
+    if (applicationId == null) return;
+    this.applicationId = applicationId;
+
+    updateWorkflows();
 
     String workflowField = meta.getWorkflowField();
-    if (workflowField != null) wWorkflowField.setText(workflowField);
+    if (workflowField != null) {
+      String[] workflowsItems = wWorkflowField.getItems();
+      for (int i = 0; i < workflowsItems.length; i++) {
+        if (workflowsItems[i].equals(workflowField)) {
+          wWorkflowField.select(i);
+          break;
+        }
+      }
+    }
+
+    updateUsers();
 
     String emailField = meta.getEmailField();
-    if (emailField != null) wEmailField.setText(emailField);
+    if (emailField != null) {
+      String[] emailItems = wEmailField.getItems();
+      for (int i = 0; i < emailItems.length; i++) {
+        if (emailItems[i].equals(emailField)) {
+          wEmailField.select(i);
+          break;
+        }
+      }
+    }
+
+    try {
+      IRowMeta row = pipelineMeta.getPrevTransformFields(variables, transformName);
+      if (row != null) {
+        String[] fieldsName = row.getFieldNames();
+        wIdField.setItems(fieldsName);
+        wStreamField.setComboValues(fieldsName);
+      }
+    } catch (HopTransformException e) {
+      System.out.println("Error to get previous transform fields.");
+    }
 
     String idField = meta.getIdField();
     if (idField != null) wIdField.setText(idField);
 
-    List<String> fields = meta.getFields();
-    if (fields != null) {
+    List<String> ksaarFields = meta.getKsaarFields();
+    if (ksaarFields != null) {
       Table fieldsTable = wFields.table;
 
-      for (int i = 0; i < fields.size(); i++) {
+      for (int i = 0; i < ksaarFields.size(); i++) {
         TableItem item = fieldsTable.getItem(i);
-        item.setText(1, fields.get(i));
+        item.setText(1, ksaarFields.get(i));
       }
+
+      fieldsTable.redraw();
     }
+
+    List<String> streamFields = meta.getStreamFields();
+    if (streamFields != null) {
+      Table fieldsTable = wFields.table;
+
+      for (int i = 0; i < streamFields.size(); i++) {
+        TableItem item = fieldsTable.getItem(i);
+        item.setText(2, streamFields.get(i));
+      }
+
+      fieldsTable.redraw();
+    }
+
+    updateFields(workflowField);
   }
 
   private void setMeta(KsaarOutputMeta meta) {
-    List<IStream> targetStreams = meta.getTransformIOMeta().getTargetStreams();
-
     meta.setBulkTypeField(wBulkTypeField.getText());
     meta.setTokenField(wTokenField.getText());
-    meta.setApplicationField(wApplicationField.getText());
     meta.setWorkflowField(wWorkflowField.getText());
+
+    meta.setToken(token);
+    meta.setApplicationId(applicationId);
+    meta.setWorkflowId(meta.workflows.get(wWorkflowField.getText()));
+
     meta.setEmailField(wEmailField.getText());
     meta.setIdField(wIdField.getText());
 
     Table fieldsTable = wFields.table;
-    List<String> fields = new ArrayList<String>();
+    List<String> ksaarFields = new ArrayList<String>();
+    List<String> streamFields = new ArrayList<String>();
 
     for (int i = 0; i < fieldsTable.getItemCount(); i++) {
       TableItem item = fieldsTable.getItem(i);
-      fields.add(item.getText(1));
+      ksaarFields.add(item.getText(1));
+      streamFields.add(item.getText(2));
     }
 
-    meta.setFields(fields);
+    meta.setKsaarFields(ksaarFields);
+    meta.setStreamFields(streamFields);
   }
 
   private void cancel() {

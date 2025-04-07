@@ -65,82 +65,68 @@ public class KsaarOutput extends BaseTransform<KsaarOutputMeta, KsaarOutputData>
       return false;
     }
 
-    String token = meta.getTokenField();
+    String token = meta.getToken();
     String bulkType = meta.getBulkTypeField();
 
-    String applicationId = Ksaar.getApplication(token, meta.getApplicationField());
-    String workflowId = Ksaar.getWorkflow(token, applicationId, meta.getWorkflowField());
-
-    String[] fieldsNames = lines.get(0).getFieldNames();
-    List<String> fieldsSearch = meta.getFields();
-    JSONArray fieldsKsaar = Ksaar.getFields(token, workflowId);
-
-    String idField = meta.getIdField();
-
-    Map<String, Integer> fieldsMapping = new HashMap<String, Integer>();
-    int idRow = -1;
-
-    for (String fieldSearch : fieldsSearch) {
-      System.out.println("Search: " + fieldSearch);
-      int row = -1;
-      String uuid = "";
-
-      for (int i = 0; i < fieldsNames.length; i++) {
-        System.out.println("fieldName: " + fieldsNames[i]);
-        if (fieldSearch.equals(fieldsNames[i])) {
-          row = i;
-          break;
-        }
-      }
-
-      for (int i = 0; i < fieldsKsaar.length(); i++) {
-        JSONObject fieldKsaar = fieldsKsaar.getJSONObject(i);
-        System.out.println("fieldKsaar: " + fieldKsaar.getString("name"));
-
-        if (fieldSearch.equals(fieldKsaar.getString("name"))) {
-          uuid = fieldKsaar.getString("id");
-          break;
-        }
-      }
-
-      if (row == -1 || uuid == "") continue;
-
-      System.out.println(uuid + ": " + row);
-      fieldsMapping.put(uuid, row);
-    }
-
-    if (!idField.isEmpty()) {
-      for (int i = 0; i < fieldsNames.length; i++) {
-        if (idField.equals(fieldsNames[i])) {
-          idRow = i;
-          break;
-        }
-      }
-    }
-
     JSONObject jsonRequest = new JSONObject();
-
     JSONArray records = new JSONArray();
+
+    String[] streamFieldsNames = lines.get(0).getFieldNames();
+
+    Map<String, Integer> mappingFields = new HashMap<String, Integer>();
+    int idCol = -1;
+
+    if (!bulkType.equals("DELETE")) {
+
+      List<String> searchStreamFieldsNames = meta.getStreamFields();
+
+      JSONArray ksaarFieldsNames = Ksaar.getFields(token, meta.getWorkflowId());
+      List<String> searchKsaarFieldsNames = meta.getKsaarFields();
+
+      for (int i = 0; i < ksaarFieldsNames.length(); i++) {
+        JSONObject ksaarField = ksaarFieldsNames.getJSONObject(i);
+        String ksaarName = ksaarField.getString("name");
+
+        if (searchKsaarFieldsNames.contains(ksaarName)) {
+          String searchStreamName = searchStreamFieldsNames.get(i);
+
+          for (int j = 0; j < streamFieldsNames.length; j++) {
+            String streamName = streamFieldsNames[j];
+
+            if (searchStreamName.equals(streamName)) {
+              mappingFields.put(ksaarField.getString("id"), j);
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (!bulkType.equals("CREATE")) {
+      for (int i = 0; i < streamFieldsNames.length; i++) {
+        String streamName = streamFieldsNames[i];
+
+        if (streamName.equals(meta.getIdField())) {
+          idCol = i;
+          break;
+        }
+      }
+
+      if (idCol == -1) throw new HopException("Error to find id column");
+    }
+
     for (Object[] row : rows) {
 
       if (bulkType.equals("DELETE")) {
-        records.put(row[idRow]);
+        records.put(row[idCol]);
       } else {
-
         JSONObject record = new JSONObject();
 
-        if (bulkType.equals("CREATE")) {
-          record.put("email", meta.getEmailField());
-          jsonRequest.put("workflowId", workflowId);
-        }
-
-        if (bulkType.equals("UPDATE")) {
-          record.put("id", row[idRow]);
-          jsonRequest.put("applicationId", applicationId);
-        }
+        if (bulkType.equals("CREATE")) record.put("email", meta.getEmailField());
+        if (bulkType.equals("UPDATE")) record.put("id", row[idCol]);
 
         JSONObject form = new JSONObject();
-        for (Entry<String, Integer> field : fieldsMapping.entrySet()) {
+        for (Entry<String, Integer> field : mappingFields.entrySet()) {
           form.put(field.getKey(), row[field.getValue()]);
         }
         record.put("form", form);
@@ -149,17 +135,28 @@ public class KsaarOutput extends BaseTransform<KsaarOutputMeta, KsaarOutputData>
       }
     }
 
-    if (bulkType.equals("DELETE")) {
-      jsonRequest.put("applicationId", applicationId);
-      jsonRequest.put("recordIds", records);
-    } else {
+    if (bulkType.equals("CREATE")) {
+      jsonRequest.put("workflowId", meta.getWorkflowId());
       jsonRequest.put("records", records);
+      System.out.println(jsonRequest.toString());
+      Ksaar.bulkCreate(token, jsonRequest.toString());
     }
 
-    if (bulkType.equals("CREATE")) Ksaar.bulkCreate(token, jsonRequest.toString());
-    if (bulkType.equals("UPDATE")) Ksaar.bulkUpdate(token, jsonRequest.toString());
-    if (bulkType.equals("DELETE")) Ksaar.bulkDelete(token, jsonRequest.toString());
+    if (bulkType.equals("UPDATE")) {
+      jsonRequest.put("applicationId", meta.getApplicationId());
+      jsonRequest.put("records", records);
+      System.out.println(jsonRequest.toString());
+      Ksaar.bulkUpdate(token, jsonRequest.toString());
+    }
 
+    if (bulkType.equals("DELETE")) {
+      jsonRequest.put("applicationId", meta.getApplicationId());
+      jsonRequest.put("recordIds", records);
+      System.out.println(jsonRequest.toString());
+      Ksaar.bulkDelete(token, jsonRequest.toString());
+    }
+
+    setOutputDone();
     return true;
   }
 

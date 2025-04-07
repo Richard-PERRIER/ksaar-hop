@@ -18,6 +18,7 @@
 package org.apache.hop.pipeline.transforms.ksaar.input;
 
 
+import java.util.Map;
 import org.apache.hop.core.annotations.Transform;
 import org.apache.hop.core.exception.HopXmlException;
 import org.apache.hop.core.row.IRowMeta;
@@ -31,7 +32,7 @@ import org.w3c.dom.Node;
 
 @Transform(
     id = "KsaarInput",
-    image = "ksaarinput.svg",
+    image = "ksaar.svg",
     name = "i18n::BaseTransform.TypeLongDesc.KsaarInput",
     description = "i18n::BaseTransform.TypeTooltipDesc.KsaarInput",
     categoryDescription = "i18n:org.apache.hop.pipeline.transform:BaseTransform.Category.Input")
@@ -39,12 +40,25 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
 
   private static final Class<?> PKG = KsaarInputMeta.class; // For Translator
 
+  public Map<String, String> workflows;
+
   private String tokenField;
-  private String applicationField;
   private String workflowField;
+
+  private String token;
+  private String applicationId;
+  private String workflowId;
 
   public KsaarInputMeta() {
     super(); // allocate BaseTransformMeta
+  }
+
+  public Map<String, String> getWorkflows() {
+    return workflows;
+  }
+
+  public void setWorkflows(Map<String, String> workflows) {
+    this.workflows = workflows;
   }
 
   public String getTokenField() {
@@ -55,20 +69,36 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
     this.tokenField = tokenField;
   }
 
-  public String getApplicationField() {
-    return applicationField;
-  }
-
-  public void setApplicationField(String applicationField) {
-    this.applicationField = applicationField;
-  }
-
   public String getWorkflowField() {
     return workflowField;
   }
 
   public void setWorkflowField(String workflowField) {
     this.workflowField = workflowField;
+  }
+
+  public String getToken() {
+    return token;
+  }
+
+  public void setToken(String token) {
+    this.token = token;
+  }
+
+  public String getApplicationId() {
+    return applicationId;
+  }
+
+  public void setApplicationId(String applicationId) {
+    this.applicationId = applicationId;
+  }
+
+  public String getWorkflowId() {
+    return workflowId;
+  }
+
+  public void setWorkflowId(String workflowId) {
+    this.workflowId = workflowId;
   }
 
   @Override
@@ -82,8 +112,11 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
 
   private void readData(Node transformNode) {
     tokenField = XmlHandler.getTagValue(transformNode, "tokenField");
-    applicationField = XmlHandler.getTagValue(transformNode, "applicationField");
     workflowField = XmlHandler.getTagValue(transformNode, "workflowField");
+
+    token = XmlHandler.getTagValue(transformNode, "token");
+    applicationId = XmlHandler.getTagValue(transformNode, "applicationId");
+    workflowId = XmlHandler.getTagValue(transformNode, "workflowId");
   }
 
   @Override
@@ -105,8 +138,11 @@ public class KsaarInputMeta extends BaseTransformMeta<KsaarInput, KsaarInputData
   public String getXml() {
     StringBuilder retval = new StringBuilder();
     retval.append("    " + XmlHandler.addTagValue("tokenField", tokenField));
-    retval.append("    " + XmlHandler.addTagValue("applicationField", applicationField));
     retval.append("    " + XmlHandler.addTagValue("workflowField", workflowField));
+
+    retval.append("    " + XmlHandler.addTagValue("token", token));
+    retval.append("    " + XmlHandler.addTagValue("applicationId", applicationId));
+    retval.append("    " + XmlHandler.addTagValue("workflowId", workflowId));
     return retval.toString();
   }
 

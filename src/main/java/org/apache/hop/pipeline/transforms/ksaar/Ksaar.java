@@ -2,7 +2,6 @@ package org.apache.hop.pipeline.transforms.ksaar;
 
 
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
@@ -15,78 +14,85 @@ import org.json.JSONObject;
 
 public class Ksaar {
 
-  public static String getApplication(String token, String applicationName) throws HopException {
+  public static JSONArray getApplication(String token) throws HopException {
     try {
       URL url = new URL("https://api.ksaar.co/v1/applications");
       HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setConnectTimeout(10000);
       con.setRequestMethod("GET");
 
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
+      System.out.println(con.toString().toString());
+      int responseCode = con.getResponseCode();
 
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
-      StringBuilder response = new StringBuilder();
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+          String inputLine;
+          StringBuilder response = new StringBuilder();
 
-      while ((inputLine = in.readLine()) != null) {
-        response.append(inputLine);
+          while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+          }
+          in.close();
+
+          con.disconnect();
+
+          JSONObject jsonResponse = new JSONObject(response.toString());
+          JSONArray results = jsonResponse.getJSONArray("results");
+
+          return results;
+
+        case HttpURLConnection.HTTP_UNAUTHORIZED:
+          throw new HopException("Ksaar.Error.Token");
+
+        default:
+          throw new HopException("Erreur with ksaar to get application. " + responseCode);
       }
-      in.close();
-      con.disconnect();
-
-      JSONObject jsonResponse = new JSONObject(response.toString());
-      JSONArray results = jsonResponse.getJSONArray("results");
-
-      for (int i = 0; i < results.length(); i++) {
-        JSONObject application = results.getJSONObject(i);
-
-        String name = application.getString("name");
-        String id = application.getString("id");
-
-        if (name.equals(applicationName)) return id;
-      }
-
-      return null;
     } catch (Exception e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+      throw new HopException(e.getMessage());
     }
   }
 
-  public static String getWorkflow(String token, String applicationId, String workflowName)
-      throws HopException {
+  public static JSONArray getWorkflows(String token, String applicationId) throws HopException {
     try {
       URL url = new URL("https://api.ksaar.co/v1/applications/" + applicationId + "/workflows");
       HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setConnectTimeout(10000);
       con.setRequestMethod("GET");
 
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
-      StringBuilder response = new StringBuilder();
+      int responseCode = con.getResponseCode();
 
-      while ((inputLine = in.readLine()) != null) {
-        response.append(inputLine);
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+          String inputLine;
+          StringBuilder response = new StringBuilder();
+
+          while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+          }
+          in.close();
+          con.disconnect();
+
+          JSONObject jsonResponse = new JSONObject(response.toString());
+          JSONArray results = jsonResponse.getJSONArray("results");
+
+          return results;
+
+        default:
+          throw new HopException(
+              "Erreur with ksaar to get workflows of application: "
+                  + applicationId
+                  + ". "
+                  + responseCode);
       }
-      in.close();
-      con.disconnect();
-
-      JSONObject jsonResponse = new JSONObject(response.toString());
-      JSONArray results = jsonResponse.getJSONArray("results");
-
-      for (int i = 0; i < results.length(); i++) {
-        JSONObject workflow = results.getJSONObject(i);
-
-        String name = workflow.getString("name");
-        String id = workflow.getString("id");
-
-        if (name.equals(workflowName)) return id;
-      }
-
-      return null;
     } catch (Exception e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+      throw new HopException(e.getMessage());
     }
   }
 
@@ -94,27 +100,37 @@ public class Ksaar {
     try {
       URL url = new URL("https://api.ksaar.co/v1/workflows/" + workflowId + "/records");
       HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setConnectTimeout(10000);
       con.setRequestMethod("GET");
 
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
-      StringBuilder response = new StringBuilder();
+      int responseCode = con.getResponseCode();
 
-      while ((inputLine = in.readLine()) != null) {
-        response.append(inputLine);
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+          String inputLine;
+          StringBuilder response = new StringBuilder();
+
+          while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+          }
+          in.close();
+          con.disconnect();
+
+          JSONObject jsonResponse = new JSONObject(response.toString());
+          JSONArray results = jsonResponse.getJSONArray("results");
+
+          return results;
+
+        default:
+          throw new HopException(
+              "Erreur with ksaar to get records of workflow: " + workflowId + ". " + responseCode);
       }
-      in.close();
-      con.disconnect();
-
-      JSONObject jsonResponse = new JSONObject(response.toString());
-      JSONArray results = jsonResponse.getJSONArray("results");
-
-      return results;
     } catch (Exception e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+      throw new HopException(e.getMessage());
     }
   }
 
@@ -122,27 +138,77 @@ public class Ksaar {
     try {
       URL url = new URL("https://api.ksaar.co/v1/workflows/" + workflowId + "/fields");
       HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setConnectTimeout(10000);
       con.setRequestMethod("GET");
 
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
-      String inputLine;
-      StringBuilder response = new StringBuilder();
+      int responseCode = con.getResponseCode();
 
-      while ((inputLine = in.readLine()) != null) {
-        response.append(inputLine);
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+          String inputLine;
+          StringBuilder response = new StringBuilder();
+
+          while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+          }
+          in.close();
+          con.disconnect();
+
+          JSONArray jsonResponse = new JSONArray(response.toString());
+
+          return jsonResponse;
+
+        default:
+          throw new HopException(
+              "Erreur with ksaar to get fields of workflow: " + workflowId + ". " + responseCode);
       }
-      in.close();
-      con.disconnect();
-
-      JSONArray jsonResponse = new JSONArray(response.toString());
-      System.out.println(jsonResponse.toString());
-
-      return jsonResponse;
     } catch (Exception e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+      throw new HopException(e.getMessage());
+    }
+  }
+
+  public static JSONArray getUsers(String token, String applicationId) throws HopException {
+    try {
+      URL url = new URL("https://api.ksaar.co/v1/applications/" + applicationId + "/users");
+      HttpURLConnection con = (HttpURLConnection) url.openConnection();
+      con.setConnectTimeout(10000);
+      con.setRequestMethod("GET");
+
+      con.setRequestProperty("Authorization", "Basic " + token);
+      con.setRequestProperty("Content-Type", "application/json");
+
+      int responseCode = con.getResponseCode();
+
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          BufferedReader in = new BufferedReader(new InputStreamReader(con.getInputStream()));
+          String inputLine;
+          StringBuilder response = new StringBuilder();
+
+          while ((inputLine = in.readLine()) != null) {
+            response.append(inputLine);
+          }
+          in.close();
+          con.disconnect();
+
+          JSONObject jsonResponse = new JSONObject(response.toString());
+          JSONArray results = jsonResponse.getJSONArray("results");
+
+          return results;
+
+        default:
+          throw new HopException(
+              "Erreur with ksaar to get users of application: "
+                  + applicationId
+                  + ". "
+                  + responseCode);
+      }
+    } catch (Exception e) {
+      throw new HopException(e.getMessage());
     }
   }
 
@@ -153,12 +219,10 @@ public class Ksaar {
       con = (HttpURLConnection) url.openConnection();
       con.setRequestMethod("POST");
       con.setDoOutput(true);
-
-      // Set request headers
+      System.out.println(token);
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      // Sending the payload to the API
       try (OutputStream os = con.getOutputStream();
           OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.UTF_8)) {
         osw.write(jsonPayload);
@@ -166,13 +230,17 @@ public class Ksaar {
       }
 
       int responseCode = con.getResponseCode();
-      System.out.println("Response Code: " + responseCode);
 
-      con.disconnect();
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_CREATED:
+          con.disconnect();
+          return true;
 
-      return true;
-    } catch (IOException e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+        default:
+          throw new HopException("Erreur with ksaar to bulkCreate. " + responseCode);
+      }
+    } catch (Exception e) {
+      throw new HopException(e.getMessage());
     }
   }
 
@@ -184,11 +252,9 @@ public class Ksaar {
       con.setRequestMethod("POST");
       con.setDoOutput(true);
 
-      // Set request headers
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      // Sending the payload to the API
       try (OutputStream os = con.getOutputStream();
           OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.UTF_8)) {
         osw.write(jsonPayload);
@@ -196,13 +262,17 @@ public class Ksaar {
       }
 
       int responseCode = con.getResponseCode();
-      System.out.println("Response Code: " + responseCode);
 
-      con.disconnect();
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_OK:
+          con.disconnect();
+          return true;
 
-      return true;
-    } catch (IOException e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+        default:
+          throw new HopException("Erreur with ksaar to bulkUpdate. " + responseCode);
+      }
+    } catch (Exception e) {
+      throw new HopException(e.getMessage());
     }
   }
 
@@ -214,11 +284,9 @@ public class Ksaar {
       con.setRequestMethod("POST");
       con.setDoOutput(true);
 
-      // Set request headers
       con.setRequestProperty("Authorization", "Basic " + token);
       con.setRequestProperty("Content-Type", "application/json");
 
-      // Sending the payload to the API
       try (OutputStream os = con.getOutputStream();
           OutputStreamWriter osw = new OutputStreamWriter(os, StandardCharsets.UTF_8)) {
         osw.write(jsonPayload);
@@ -226,13 +294,17 @@ public class Ksaar {
       }
 
       int responseCode = con.getResponseCode();
-      System.out.println("Response Code: " + responseCode);
 
-      con.disconnect();
+      switch (responseCode) {
+        case HttpURLConnection.HTTP_NO_CONTENT:
+          con.disconnect();
+          return true;
 
-      return true;
-    } catch (IOException e) {
-      throw new HopException("Erreur lors de l'appel à l'API Ksaar", e);
+        default:
+          throw new HopException("Erreur with ksaar to bulkDelete. " + responseCode);
+      }
+    } catch (Exception e) {
+      throw new HopException(e.getMessage());
     }
   }
 }

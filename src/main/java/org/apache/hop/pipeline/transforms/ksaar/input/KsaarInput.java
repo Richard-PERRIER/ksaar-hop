@@ -29,18 +29,10 @@ public class KsaarInput extends BaseTransform<KsaarInputMeta, KsaarInputData> {
 
   @Override
   public boolean processRow() throws HopException {
-    // Vérifier si les métadonnées sont correctement initialisées
-    if (data.outputRowMeta == null) {
-      throw new HopException("Les métadonnées de sortie ne sont pas initialisées !");
-    }
-
     boolean firstRow = true;
 
-    String token = meta.getTokenField();
-
-    String applicationId = Ksaar.getApplication(token, meta.getApplicationField());
-    String workflowId = Ksaar.getWorkflow(token, applicationId, meta.getWorkflowField());
-    JSONArray records = Ksaar.getRecords(token, workflowId);
+    String token = meta.getToken();
+    JSONArray records = Ksaar.getRecords(token, meta.getWorkflowId());
 
     for (int i = 0; i < records.length(); i++) {
       JSONObject record = records.getJSONObject(i);
@@ -64,17 +56,16 @@ public class KsaarInput extends BaseTransform<KsaarInputMeta, KsaarInputData> {
       putRow(data.outputRowMeta, outputRow);
     }
 
-    setOutputDone(); // Indique que le processus est terminé
-    return false; // Ne continue pas à traiter d'autres lignes
+    setOutputDone();
+    return false;
   }
 
   @Override
   public boolean init() {
     super.init();
 
-    // Initialiser les métadonnées de sortie avec les colonnes appropriées
     if (data.outputRowMeta == null) {
-      data.outputRowMeta = new RowMeta(); // Créer un nouveau RowMeta
+      data.outputRowMeta = new RowMeta();
     }
 
     return true;
